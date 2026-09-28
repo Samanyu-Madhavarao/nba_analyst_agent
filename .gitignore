@@ -5,5 +5,5 @@ __pycache__/
 .env
 
 # data is large and regenerable from the download scripts
-data/
+/data/
 models/*.joblib
