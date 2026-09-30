@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
@@ -49,7 +48,7 @@ def get_X_y(split_df: pd.DataFrame, features: list):
 
 
 def build_model(C: float) -> Pipeline:
-     return Pipeline([
+    return Pipeline([
         ("scaler", StandardScaler()),
         ("logreg", LogisticRegression(C=C, max_iter=1000)),
     ])
@@ -130,9 +129,6 @@ def print_comparison(results: dict) -> None:
     acc = b["one_feature_win_acc"]
     ll = b["constant_prob_log_loss"]
     br = b["constant_prob_brier"]
-    print(f"{'one-feature baseline':<22}{1:>4}{'-':>8}"
-          f"{acc['train']:>8.3f}{acc['val']:>8.3f}{acc['test']:>8.3f}"
-          f"{'-':>8}{'-':>8}{'-':>8}{'-':>8}")
     print(f"{'constant probability':<22}{0:>4}{'-':>8}"
           f"{'-':>8}{'-':>8}{'-':>8}"
           f"{ll['val']:>8.3f}{ll['test']:>8.3f}{br['val']:>8.3f}{br['test']:>8.3f}")
