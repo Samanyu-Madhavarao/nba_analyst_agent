@@ -1,0 +1,32 @@
+{
+  "constant_margin": {
+    "train_MAE": 11.28966509814329,
+    "train_RMSE": 14.177562418778846,
+    "train_win_accuracy": 0.570926517571885,
+    "val_MAE": 12.479304224352148,
+    "val_RMSE": 15.667063484121286,
+    "val_win_accuracy": 0.5432098765432098,
+    "test_MAE": 12.864359627561306,
+    "test_RMSE": 16.164070228635925,
+    "test_win_accuracy": 0.5502471169686985
+  },
+  "constant_win_probability": {
+    "train_brier_score": 0.24496942910512517,
+    "train_log_loss": 0.6830520220260182,
+    "val_brier_score": 0.24890111875903306,
+    "val_log_loss": 0.6909687904678457,
+    "test_brier_score": 0.24790286484564106,
+    "test_log_loss": 0.688958727168313
+  },
+  "one_feature_net_rating": {
+    "train_MAE": 10.605169421592944,
+    "train_RMSE": 13.462512743678491,
+    "train_win_accuracy": 0.6232161874334399,
+    "val_MAE": 11.585197302814278,
+    "val_RMSE": 14.690390788744962,
+    "val_win_accuracy": 0.6279835390946502,
+    "test_MAE": 11.671133626991866,
+    "test_RMSE": 14.838538479319757,
+    "test_win_accuracy": 0.6523887973640856
+  }
+}

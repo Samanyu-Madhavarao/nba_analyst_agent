@@ -83,12 +83,40 @@ def clean_split_columns(wide: pd.DataFrame) -> pd.DataFrame:
 
     return wide
 
+def fill_split_fallbacks(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    home_mask = df["is_home"]
+    road_mask = ~df["is_home"]
+
+    # net rating: fall back to the team's overall rolled value
+    df.loc[home_mask, "home_last_10_net_rating"] = (
+        df.loc[home_mask, "home_last_10_net_rating"]
+        .fillna(df.loc[home_mask, "last_10_net_rating"])
+    )
+    df.loc[road_mask, "road_last_10_net_rating"] = (
+        df.loc[road_mask, "road_last_10_net_rating"]
+        .fillna(df.loc[road_mask, "last_10_net_rating"])
+    )
+
+    # win pct: no overall rolled win pct exists, so use a neutral 0.5
+    df.loc[home_mask, "home_last_10_win_pct"] = df.loc[home_mask, "home_last_10_win_pct"].fillna(0.5)
+    df.loc[road_mask, "road_last_10_win_pct"] = df.loc[road_mask, "road_last_10_win_pct"].fillna(0.5)
+
+    home_cols = ["home_last_10_net_rating", "home_last_10_win_pct"]
+    road_cols = ["road_last_10_net_rating", "road_last_10_win_pct"]
+
+    assert df.loc[home_mask, home_cols].isna().sum().sum() == 0, "NaNs left in home split cols on home rows"
+    assert df.loc[road_mask, road_cols].isna().sum().sum() == 0, "NaNs left in road split cols on road rows"
+    return df
+
+
 def build_wide_table(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     games_before = df["GAME_ID"].nunique()
 
     df = handle_missing_rest_days(df, strategy="fill_default")
     df = handle_missing_rolling_stats(df, strategy="drop")
+    df = fill_split_fallbacks(df)
 
     games_after = df["GAME_ID"].nunique()
     print(f"games before: {games_before}, after: {games_after}, rows: {len(df)}")
@@ -99,6 +127,15 @@ def build_wide_table(df: pd.DataFrame) -> pd.DataFrame:
     print(games_before - len(wide))
 
     wide = clean_split_columns(wide)
+    split_cols = [
+        "home_team_home_net_rating_l10",
+        "home_team_home_win_pct_l10",
+        "away_team_road_net_rating_l10",
+        "away_team_road_win_pct_l10",
+    ]
+    n_nan = int(wide[split_cols].isna().sum().sum())
+    assert n_nan == 0, f"{n_nan} NaNs remain in split columns after fill"
+    
     return wide
 
 def add_targets(wide: pd.DataFrame) -> pd.DataFrame:
