@@ -1,0 +1,108 @@
+{
+  "no_actual_absence": {
+    "n_features": 59,
+    "best_params": {
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "reg_lambda": 1
+    },
+    "best_iteration": 181,
+    "train": {
+      "accuracy": 0.6798941798941799,
+      "brier": 0.20739319920539856,
+      "log_loss": 0.6022999286651611
+    },
+    "val": {
+      "accuracy": 0.653941908713693,
+      "brier": 0.21663899719715118,
+      "log_loss": 0.622696578502655
+    },
+    "test": {
+      "accuracy": 0.6504201680672269,
+      "brier": 0.21813641488552094,
+      "log_loss": 0.6259036660194397
+    }
+  },
+  "full": {
+    "n_features": 81,
+    "best_params": {
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "reg_lambda": 10
+    },
+    "best_iteration": 372,
+    "train": {
+      "accuracy": 0.7142857142857143,
+      "brier": 0.19157147407531738,
+      "log_loss": 0.5666952133178711
+    },
+    "val": {
+      "accuracy": 0.6556016597510373,
+      "brier": 0.21204781532287598,
+      "log_loss": 0.6124040484428406
+    },
+    "test": {
+      "accuracy": 0.6533613445378151,
+      "brier": 0.2144339680671692,
+      "log_loss": 0.6168944835662842
+    }
+  },
+  "market_plus_no_absence": {
+    "n_features": 60,
+    "best_params": {
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "reg_lambda": 10
+    },
+    "best_iteration": 182,
+    "train": {
+      "accuracy": 0.6951058201058201,
+      "brier": 0.19703041017055511,
+      "log_loss": 0.5777930021286011
+    },
+    "val": {
+      "accuracy": 0.6954356846473029,
+      "brier": 0.1995469182729721,
+      "log_loss": 0.5841447114944458
+    },
+    "test": {
+      "accuracy": 0.6878151260504202,
+      "brier": 0.19899655878543854,
+      "log_loss": 0.5830046534538269
+    },
+    "paired_vs_market_test": {
+      "mean_diff": 0.009307267601552071,
+      "std_err": 0.002030379716771601,
+      "n": 2380
+    }
+  },
+  "market_plus_full": {
+    "n_features": 82,
+    "best_params": {
+      "max_depth": 3,
+      "min_child_weight": 50,
+      "reg_lambda": 10
+    },
+    "best_iteration": 206,
+    "train": {
+      "accuracy": 0.6997354497354498,
+      "brier": 0.19545385241508484,
+      "log_loss": 0.5742757320404053
+    },
+    "val": {
+      "accuracy": 0.6912863070539419,
+      "brier": 0.19802027940750122,
+      "log_loss": 0.5804763436317444
+    },
+    "test": {
+      "accuracy": 0.6907563025210084,
+      "brier": 0.1980162411928177,
+      "log_loss": 0.5805686116218567
+    },
+    "paired_vs_market_test": {
+      "mean_diff": 0.006871248891425676,
+      "std_err": 0.002265540456584792,
+      "n": 2380
+    }
+  }
+}

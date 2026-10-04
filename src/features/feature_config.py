@@ -62,11 +62,20 @@ OUTCOME_COLUMNS = both([
     "team_win",
 ])
 
+MARKET_FEATURES = [
+    "home_decimal_odds", "away_decimal_odds", "home_implied_prob"
+]
+
+ODDS_IDENTIFIERS = ["odds_date_shifted"]
+
 TARGETS = ["actual_margin", "home_win", "total_points"]
 
-def check_coverage(columns):
+def check_coverage(columns, include_odds=False):
     groups = {"identifiers": IDENTIFIERS, "pre_game": PRE_GAME_FEATURES,
               "outcome": OUTCOME_COLUMNS, "targets": TARGETS}
+    if include_odds:
+        groups["market"] = MARKET_FEATURES
+        groups["odds_identifiers"] = ODDS_IDENTIFIERS
     all_named = [c for g in groups.values() for c in g]
 
     dupes = {c for c in all_named if all_named.count(c) > 1}

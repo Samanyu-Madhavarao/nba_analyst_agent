@@ -1,45 +1,61 @@
 # src/prediction/logistic_regression.py
+"""
+Win-probability logistic regression on features_with_odds.parquet, with and
+without the market's no-vig moneyline probability as a feature.
+
+Run:
+    python -m src.prediction.logistic_regression
+"""
 
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.prediction.baselines import split_by_season, TRAIN_SEASONS, VAL_SEASONS, TEST_SEASONS
+from src.prediction.baselines import split_by_season
 from src.features.feature_config import (
     PRE_GAME_FEATURES,
-    EXPECTED_ROSTER_FEATURES,
     ACTUAL_ABSENCE_FEATURES,
 )
 
-FEATURE_PATH = Path("data/processed/features.parquet")
-RESULTS_PATH = Path("data/results/logistic_regression.json")
+FEATURE_PATH = Path("data/processed/features_with_odds.parquet")
+RESULTS_PATH = Path("data/results/logistic_regression_odds.json")
+
+# Reduced split: the odds source has no 2015-16, 2019-20, or 2020-21.
+ODDS_TRAIN_SEASONS = ["2016-17", "2017-18", "2018-19", "2021-22", "2022-23"]
+ODDS_VAL_SEASONS = ["2023-24"]
+ODDS_TEST_SEASONS = ["2024-25", "2025-26"]
 
 C_GRID = [0.001, 0.01, 0.1, 1]
 
-# Ablation feature sets, built by filtering PRE_GAME_FEATURES so the
-# config stays the single source of truth.
+NO_ABSENCE = [f for f in PRE_GAME_FEATURES if f not in ACTUAL_ABSENCE_FEATURES]
+
 FEATURE_SETS = {
+    "market_only": ["market_logit"],
     "one_feature": ["last_10_net_rating_difference"],
+    "no_actual_absence": NO_ABSENCE,
     "full": PRE_GAME_FEATURES,
-    "no_actual_absence": [
-        f for f in PRE_GAME_FEATURES if f not in ACTUAL_ABSENCE_FEATURES
-    ],
-    "no_injury_production": [
-        f for f in PRE_GAME_FEATURES
-        if f not in ACTUAL_ABSENCE_FEATURES and f not in EXPECTED_ROSTER_FEATURES
-    ],
+    "market_plus_no_absence": ["market_logit"] + NO_ABSENCE,
+    "market_plus_full": ["market_logit"] + PRE_GAME_FEATURES,
 }
 
-BASELINE_REFERENCE = {
-    "one_feature_win_acc": {"train": 0.623, "val": 0.628, "test": 0.652},
-    "constant_prob_log_loss": {"train": 0.683, "val": 0.691, "test": 0.689},
-    "constant_prob_brier": {"train": 0.245, "val": 0.249, "test": 0.248},
-}
+REFERENCE_SET = "market_only"
+
+
+def add_market_logit(df: pd.DataFrame) -> pd.DataFrame:
+    """log-odds of the no-vig market home win probability. Row-wise, no fitted state."""
+    df = df.copy()
+    p = df["home_implied_prob"]
+    assert p.notna().all(), "NaN in home_implied_prob"
+    assert ((p > 0) & (p < 1)).all(), "home_implied_prob outside (0, 1)"
+    df["market_logit"] = np.log(p / (1 - p))
+    return df
+
 
 def get_X_y(split_df: pd.DataFrame, features: list):
     X = split_df[features].astype(float)
@@ -60,11 +76,23 @@ def score_model(model, X, y) -> dict:
     return {
         "accuracy": float(accuracy_score(y, preds)),
         "brier": float(brier_score_loss(y, probs)),
-        "log_loss": float(log_loss(y, probs))
+        "log_loss": float(log_loss(y, probs)),
+    }
+
+
+def raw_market_scores(split_df: pd.DataFrame) -> dict:
+    """Scores of the market's no-vig probability itself, with no model fitted."""
+    y = split_df["home_win"].astype(int)
+    p = split_df["home_implied_prob"]
+    return {
+        "accuracy": float(accuracy_score(y, (p >= 0.5).astype(int))),
+        "brier": float(brier_score_loss(y, p)),
+        "log_loss": float(log_loss(y, p)),
     }
 
 
 def tune_C(train: pd.DataFrame, val: pd.DataFrame, features: list, c_grid: list = C_GRID) -> float:
+    """Pick C by val log loss. Never receives test."""
     X_train, y_train = get_X_y(train, features)
     X_val, y_val = get_X_y(val, features)
     scores = {}
@@ -73,9 +101,8 @@ def tune_C(train: pd.DataFrame, val: pd.DataFrame, features: list, c_grid: list 
         model.fit(X_train, y_train)
         metrics = score_model(model, X_val, y_val)
         scores[C] = metrics["log_loss"]
-        print(f"{C}, {metrics['log_loss']}")
+        print(f"  C={C}: val log loss {metrics['log_loss']:.4f}")
     return min(scores, key=scores.get)
-        
 
 
 def run_experiment(train, val, test, features: list) -> dict:
@@ -90,7 +117,7 @@ def run_experiment(train, val, test, features: list) -> dict:
         "n_features": len(features),
         "train": score_model(model, X_train, y_train),
         "val": score_model(model, X_val, y_val),
-        "test": score_model(model, X_test, y_test)
+        "test": score_model(model, X_test, y_test),
     }
 
 
@@ -110,46 +137,55 @@ def save_results(results: dict, path: Path = RESULTS_PATH) -> None:
         json.dump(results, f, indent=2)
 
 
-def print_comparison(results: dict) -> None:
-    """Print accuracy / log loss / Brier per feature set and split, plus baselines."""
-    header = (f"{'feature set':<22}{'n':>4}{'C':>8}"
+def print_comparison(results: dict, market_raw: dict) -> None:
+    """Accuracy / log loss / Brier per feature set, deltas vs. the reference set,
+    and the raw (unfitted) market as a final row."""
+    ref = results[REFERENCE_SET]
+    header = (f"{'feature set':<24}{'n':>4}{'C':>8}"
               f"{'acc tr':>8}{'acc va':>8}{'acc te':>8}"
-              f"{'ll va':>8}{'ll te':>8}{'br va':>8}{'br te':>8}")
+              f"{'ll va':>8}{'ll te':>8}{'br va':>8}{'br te':>8}"
+              f"{'d ll va':>9}{'d ll te':>9}")
     print(header)
     print("-" * len(header))
 
     for name, r in results.items():
-        print(f"{name:<22}{r['n_features']:>4}{r['best_C']:>8}"
+        d_va = r["val"]["log_loss"] - ref["val"]["log_loss"]
+        d_te = r["test"]["log_loss"] - ref["test"]["log_loss"]
+        print(f"{name:<24}{r['n_features']:>4}{r['best_C']:>8}"
               f"{r['train']['accuracy']:>8.3f}{r['val']['accuracy']:>8.3f}{r['test']['accuracy']:>8.3f}"
               f"{r['val']['log_loss']:>8.3f}{r['test']['log_loss']:>8.3f}"
-              f"{r['val']['brier']:>8.3f}{r['test']['brier']:>8.3f}")
+              f"{r['val']['brier']:>8.3f}{r['test']['brier']:>8.3f}"
+              f"{d_va:>+9.4f}{d_te:>+9.4f}")
 
     print("-" * len(header))
-    b = BASELINE_REFERENCE
-    acc = b["one_feature_win_acc"]
-    ll = b["constant_prob_log_loss"]
-    br = b["constant_prob_brier"]
-    print(f"{'constant probability':<22}{0:>4}{'-':>8}"
-          f"{'-':>8}{'-':>8}{'-':>8}"
-          f"{ll['val']:>8.3f}{ll['test']:>8.3f}{br['val']:>8.3f}{br['test']:>8.3f}")
+    mv, mt = market_raw["val"], market_raw["test"]
+    print(f"{'market raw (no fit)':<24}{'-':>4}{'-':>8}"
+          f"{'-':>8}{mv['accuracy']:>8.3f}{mt['accuracy']:>8.3f}"
+          f"{mv['log_loss']:>8.3f}{mt['log_loss']:>8.3f}"
+          f"{mv['brier']:>8.3f}{mt['brier']:>8.3f}"
+          f"{mv['log_loss'] - ref['val']['log_loss']:>+9.4f}"
+          f"{mt['log_loss'] - ref['test']['log_loss']:>+9.4f}")
+    print(f"\nd ll = log loss minus the '{REFERENCE_SET}' row (negative = better than it).")
 
 
 if __name__ == "__main__":
     df = pd.read_parquet(FEATURE_PATH)
-    train, val, test = split_by_season(df, TRAIN_SEASONS, VAL_SEASONS, TEST_SEASONS)
+    df = add_market_logit(df)
+    train, val, test = split_by_season(
+        df, ODDS_TRAIN_SEASONS, ODDS_VAL_SEASONS, ODDS_TEST_SEASONS
+    )
+    print(f"split sizes: train {len(train)}, val {len(val)}, test {len(test)}")
 
-    # Sanity check 1: no NaNs in any split for the full feature set
+    # Sanity check 1: no NaNs in any split, for every column any feature set uses
+    all_cols = sorted({c for feats in FEATURE_SETS.values() for c in feats})
     for split_name, split_df in [("train", train), ("val", val), ("test", test)]:
-        X, _ = get_X_y(split_df, PRE_GAME_FEATURES)
+        X, _ = get_X_y(split_df, all_cols)
         n_nan = int(X.isna().sum().sum())
-        assert n_nan == 0, f"{split_name} has {n_nan} NaNs in PRE_GAME_FEATURES"
+        assert n_nan == 0, f"{split_name} has {n_nan} NaNs in feature columns"
 
-    # Sanity check 2: each ablation actually removes features
-    n_full = len(FEATURE_SETS["full"])
-    n_no_abs = len(FEATURE_SETS["no_actual_absence"])
-    n_no_inj = len(FEATURE_SETS["no_injury_production"])
-    assert n_full > n_no_abs > n_no_inj, (
-        f"Ablation sizes not strictly decreasing: {n_full}, {n_no_abs}, {n_no_inj}"
+    # Sanity check 2: the absence ablation actually removes features
+    assert len(FEATURE_SETS["full"]) > len(FEATURE_SETS["no_actual_absence"]), (
+        "no_actual_absence removed nothing; check ACTUAL_ABSENCE_FEATURES"
     )
 
     results = {}
@@ -157,13 +193,18 @@ if __name__ == "__main__":
         print(f"\nRunning {name} ({len(features)} features)...")
         results[name] = run_experiment(train, val, test, features)
 
-    save_results(results)
-    print()
-    print_comparison(results)
+    market_raw = {"val": raw_market_scores(val), "test": raw_market_scores(test)}
+    results["market_raw"] = market_raw  # saved alongside; excluded from the table loop below
 
-    # Refit the full model once to look at coefficients
-    X_train, y_train = get_X_y(train, PRE_GAME_FEATURES)
-    model = build_model(results["full"]["best_C"])
+    save_results(results)
+    results_for_table = {k: v for k, v in results.items() if k != "market_raw"}
+    print()
+    print_comparison(results_for_table, market_raw)
+
+    # Refit market_plus_full once to look at coefficients
+    feats = FEATURE_SETS["market_plus_full"]
+    X_train, y_train = get_X_y(train, feats)
+    model = build_model(results["market_plus_full"]["best_C"])
     model.fit(X_train, y_train)
-    print("\nTop coefficients (full feature set):")
-    print(inspect_coefficients(model, PRE_GAME_FEATURES).to_string())
+    print("\nTop coefficients (market_plus_full):")
+    print(inspect_coefficients(model, feats).to_string())
